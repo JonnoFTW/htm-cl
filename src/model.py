@@ -18,13 +18,12 @@ class Model(object):
 
         self.encoders = {'encoder': getattr(nupic.encoders, field)(**args) for field, args in
                          params['sensorParams']['encoders'].iteritems()}
-        params['spParams']['inputWidth'] = sum(map(lambda x:x.n, self.encoders))
+        params['spParams']['inputWidth'] = sum(map(lambda x: x.n, self.encoders))
         self.sp = SpatialPooler(**params['spParams'])
         self.tm = TemporalMemory(**params['tpParams'])
         self.classifier = CLAClassifier(**params['claParams'])
         self.predicted_field = params['predictedField']
         self.recordNum = 0
-
 
     def encode(self, inputs):
         """
@@ -43,7 +42,7 @@ class Model(object):
         self.recordNum += 1
         encodings = self.encode(inputs)
         predictedValue = inputs[self.predicted_field]
-        bucketIdx = self.encoders[self.predicted_field].getBucketIndices(predictedValue)
+        bucketIdx = self.encoders[self.predicted_field].getBucketIndices(predictedValue)[0]
         self.recordNum += 1
 
         spActiveColumnIdxs = self.sp.compute(encodings)

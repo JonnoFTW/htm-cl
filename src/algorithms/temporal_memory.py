@@ -22,16 +22,13 @@ class TemporalMemory(object):
                  seed=1960,
                  temporalImp='cl',
                  verbosity=0):
-
         self.columnCount = 2048
         if temporalImp != 'cl':
             raise ValueError('This implementation only supports OpenCL')
         self.columnCount = columnCount
         self.inputWidth = inputWidth
-        self.columns =np.zeros((columnCount, cellsPerColumn), dtype=np.uint8)
+        self.columns = np.zeros((columnCount, cellsPerColumn), dtype=np.uint8)
         np.random.seed(seed)
 
-
     def compute(self, spActiveIndices):
-
         return

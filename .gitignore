@@ -70,3 +70,9 @@ venv/
 ENV/
 .spyderproject
 .ropeproject
+.idea/dbnavigator.xml
+.idea/encodings.xml
+.idea/htm-cl.iml
+.idea/misc.xml
+.idea/modules.xml
+.idea/vcs.xml

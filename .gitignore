@@ -12,6 +12,8 @@
 .idea/gradle.xml
 .idea/libraries
 .idea/mongoSettings.xml
+.idea/markdown-navigator.xml
+.idea/markdown-navigator/*
 *.iws
 /out/
 .idea_modules/

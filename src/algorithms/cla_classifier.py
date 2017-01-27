@@ -1,7 +1,7 @@
 from __future__ import print_function
 import pyopencl as cl
 from pyopencl import array
-from pyopencl import dtypes
+from pyopencl import cltypes
 import numpy as np
 
 kernel_src = """
@@ -81,7 +81,7 @@ class CLAClassifier(object):
         :param infer:
         :return:
         """
-        pattern = np.array(pattern).astype(np.uint32)
+        pattern = np.array(pattern).astype(cl.cltypes.uint)
         self.bit_activations[pattern] += 1  # number of times each bit was active
 
         multiStepPredictions = {}
@@ -118,12 +118,7 @@ class CLAClassifier(object):
                                         cl.dtypes.char(learn), cl.dtypes.char(infer), cl_predictions, cl.dtypes.ulonglong(240))
 
                 if learn:
-                    cl.enqueue_copy(self._queue, new_table, cl_new_table).wait()
-                    self.steps[step] = new_table
-                    if self._verbose:
-                        print("new table")
-                        self._show_table(new_table)
-                        pass
+                    cl.enqueue_copy(self._queue, self.steps[step], cl_new_table).wait()
                 if infer:
                     cl.enqueue_copy(self._queue, predictions, cl_predictions).wait()
                 print("Activations", self.bucket_activations)
@@ -138,12 +133,12 @@ class CLAClassifier(object):
 
 def test_cla_se():
     from nupic.encoders import ScalarEncoder
-    from nupic.algorithms import CLAClassifier as npCLAClassifier
+    from nupic.algorithms.CLAClassifier import CLAClassifier as npCLAClassifier
 
     se = ScalarEncoder(n=10, w=3, minval=0, maxval=20, forced=True)
     queue = cl.CommandQueue(cl.Context([cl.get_platforms()[0].get_devices()[0]]))
     classifier = CLAClassifier(queue, numbuckets=len(se.getBucketValues()), bits=se.n, verbose=True)
-    np_cla = npCLAClassifier.CLAClassifier(verbosity=1)
+    np_cla = npCLAClassifier(verbosity=1)
     print("Buckets", se.getBucketValues())
     val = 5
     for _ in range(0, 2):

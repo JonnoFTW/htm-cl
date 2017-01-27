@@ -30,5 +30,7 @@ class TemporalMemory(object):
         self.columns = np.zeros((columnCount, cellsPerColumn), dtype=np.uint8)
         np.random.seed(seed)
 
+    def infer(self, pattern):
+        pass
     def compute(self, spActiveIndices):
         return

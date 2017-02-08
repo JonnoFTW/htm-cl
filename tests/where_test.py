@@ -36,6 +36,7 @@ def cl_where(values):
 
 lim = 1000
 
+
 def timeit(func):
     @functools.wraps(func)
     def newfunc(*args, **kwargs):
@@ -50,9 +51,10 @@ def timeit(func):
 
 @timeit
 def test_np():
-     for _ in xrange(lim):
+    for _ in xrange(lim):
         # a = np_where(vals)
         a = np.zeros(10000)
+
 
 @timeit
 def test_cl():

@@ -1,7 +1,10 @@
 from __future__ import print_function
 import pyopencl as cl
 from pyopencl import array
-from pyopencl import cltypes
+try:
+    from pyopencl import cltypes
+except ImportError:
+    from ..utils import cltypes
 import numpy as np
 from collections import deque
 

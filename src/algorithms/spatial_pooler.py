@@ -458,8 +458,9 @@ class SpatialPooler(object):
     def _get_overlap_score_numpy_bitidx(self, encoding):
         sa = self.synapses
         activeBits = np.where(encoding == 1)[0]
-        test = np.sum(np.split(sa[activeBits]['permanence'] > self.synPermConnected, self.columnCount), axis=0)
-
+        test = np.sum(
+            np.split((encoding[sa['bitIdx']] == 1) & (sa['permanence'] > self.synPermConnected), self.columnCount),
+            axis=1)
         overlaps = np.zeros(self.columnCount, dtype=[('overlap', np.uint32), ('boostedOverlap', np.uint32)])
         for synIdx, synapse in enumerate(self.synapses):
             cellIdx = synIdx / self.synapsesPerColumn

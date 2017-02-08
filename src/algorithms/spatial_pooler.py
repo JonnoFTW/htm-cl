@@ -157,7 +157,7 @@ __kernel void overlap_by_input(
     __constant synapse_struct* synapses,
     __constant int* inputSynapses, // synapse indexes for each input bit
     __constant float* boostFactors,
-    __global uint2* overlaps,
+    __global uint* overlaps,
     const float synPermConnected,
     const int synapsesPerColumn,
     const int max_count
@@ -171,8 +171,8 @@ __kernel void overlap_by_input(
                 break;
             if(synapses[synapseIdx].permanence > synPermConnected) {
                 const int column = synapseIdx / synapsesPerColumn;
-                const int out = ++(overlaps[column].x);
-                overlaps[column].y = out * boostFactors[column];
+                atomic_inc(&overlaps[column]);
+              //  overlaps[column].y = overlaps[column].x * boostFactors[column];
             }
         }
     }
@@ -352,7 +352,7 @@ class SpatialPooler(object):
             __constant uchar* inputBits,
             __constant synapse_struct* synapses,
             __constant int* inputSynapses, // synapse indexes for each input bit
-            __constant uint* boostFactors,
+            __constant float* boostFactors,
             __global uint2* overlaps,
             const float synPermConnected,
             const int synapsesPerColumn,
@@ -361,14 +361,14 @@ class SpatialPooler(object):
         :return:
         """
         cl_encoding = cl.Buffer(self._ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=encoding)
-        overlap = np.zeros(self.columnCount, dtype=cl.array.vec.uint2)  # array of overlap and boosted overlap scores
-        cl_overlap = cl.Buffer(self._ctx, mf.READ_WRITE, overlap.nbytes)
+        overlap = np.zeros(self.columnCount, dtype=cltypes.uint)  # array of overlap and boosted overlap scores
+        cl_overlap = cl.Buffer(self._ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=overlap)
         cl_input_synapses = cl.Buffer(self._ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=self.input_bitIdx)
         cl_synapses = self._get_cl_synapses_buffer()
         cl_boostFactors = self._get_cl_boost_factor_buffer()
 
         self.prog.overlap_by_input(self._queue, (self.inputWidth,), None,
-                                          cl_encoding, cl_synapses, cl_input_synapses, cl_overlap, cl_boostFactors,
+                                          cl_encoding, cl_synapses, cl_input_synapses, cl_boostFactors, cl_overlap,
                                           self.synPermConnected, self.synapsesPerColumn, cltypes.int(self.max_input_to_synapse)).wait()
         cl.enqueue_copy(self._queue, overlap, cl_overlap).wait()
         return overlap
@@ -461,13 +461,14 @@ class SpatialPooler(object):
         test = np.sum(
             np.split((encoding[sa['bitIdx']] == 1) & (sa['permanence'] > self.synPermConnected), self.columnCount),
             axis=1)
+        return test
         overlaps = np.zeros(self.columnCount, dtype=[('overlap', np.uint32), ('boostedOverlap', np.uint32)])
         for synIdx, synapse in enumerate(self.synapses):
             cellIdx = synIdx / self.synapsesPerColumn
             if synapse['permanence'] > self.synPermConnected and encoding[synapse['bitIdx']] == 1:
                 overlaps[cellIdx][0] += 1
                 overlaps[cellIdx][1] = overlaps[cellIdx][0] * self._boostFactors[cellIdx]
-        assert np.array_equal(test, overlaps)
+        assert np.array_equal(test, overlaps['overlap'])
         return overlaps
 
     def _get_overlap_score_bitidx(self, encoding):

@@ -1,10 +1,12 @@
 from __future__ import absolute_import, print_function
 import pyopencl as cl
 import numpy as np
+import os
+print(os.environ['PYTHONPATH'].split(os.pathsep))
 from tests.timeit import timeit
 from src.algorithms import SpatialPooler
 
-device = cl.get_platforms()[1].get_devices()[0]
+device = cl.get_platforms()[0].get_devices()[0]
 
 
 @timeit
@@ -89,6 +91,8 @@ def compare_overlap():
     # print("testing cl bit idx")
     # test_cl_idx(sp_cl, se, lim)
     #
+    print("Testing numpy")
+    test_numpy_idx(sp_cl, se, lim)
     print("testing inverse")
     test_input_inverse(sp_cl, se, lim)
 

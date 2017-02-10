@@ -156,8 +156,8 @@ __kernel void overlap_by_input(
     __constant uchar* inputBits,
     __constant synapse_struct* synapses,
     __constant int* inputSynapses, // synapse indexes for each input bit
-    __constant float* boostFactors,
-    __global uint* overlaps,
+ //   __constant float* boostFactors,
+    volatile __global uint* overlaps,
     const float synPermConnected,
     const int synapsesPerColumn,
     const int max_count
@@ -167,16 +167,18 @@ __kernel void overlap_by_input(
     if(inputBits[gid]==1){
         for(int i=0;i<max_count;i++) {
             const int synapseIdx = inputSynapses[gid * max_count + i];
+           // if(gid==1 && synapseIdx != -1) {
+             //   printf("InputBit: 0, synapseIdx: %d col: %d on: %d\\n", synapseIdx, synapseIdx/synapsesPerColumn,
+             //       synapses[synapseIdx].permanence > synPermConnected);
+          //  }
             if(synapseIdx==-1)
                 break;
             if(synapses[synapseIdx].permanence > synPermConnected) {
-                const int column = synapseIdx / synapsesPerColumn;
-                atomic_inc(&overlaps[column]);
+                atomic_inc(&overlaps[synapseIdx / synapsesPerColumn]);
               //  overlaps[column].y = overlaps[column].x * boostFactors[column];
             }
         }
     }
-
 }
 __kernel void update_synapses(
     __constant uchar* encoding, // encoded input
@@ -288,7 +290,7 @@ class SpatialPooler(object):
                                  dtype=synapse_struct)  # x is permanence value, y is input bit idx
         if spVerbosity >= 1:
             print('------------CL  SpatialPooler Parameters ------------------')
-            # print("Synapse Struct", synapse_struct_c_decl)
+            print("Synapse Struct", synapse_struct_c_decl)
             print("Synapses\t", self.synapses.size)
             print("Columns\t", self.columnCount)
             print("Input Width\t", self.inputWidth)
@@ -368,11 +370,24 @@ class SpatialPooler(object):
         cl_boostFactors = self._get_cl_boost_factor_buffer()
 
         self.prog.overlap_by_input(self._queue, (self.inputWidth,), None,
-                                          cl_encoding, cl_synapses, cl_input_synapses, cl_boostFactors, cl_overlap,
+                                          cl_encoding, cl_synapses, cl_input_synapses,
+                                  # cl_boostFactors,
+                                   cl_overlap,
                                           self.synPermConnected, self.synapsesPerColumn, cltypes.int(self.max_input_to_synapse)).wait()
         cl.enqueue_copy(self._queue, overlap, cl_overlap).wait()
         return overlap
 
+    def dump_kernel_info(self):
+        for knl in self.prog.all_kernels():
+            print(knl.function_name)
+            print("  Work Group Info")
+            for attr in [getattr(cl.kernel_work_group_info,i) for i in dir(cl.kernel_work_group_info) if not i.startswith('_')]:
+                try:
+                    res = knl.get_work_group_info(attr, knl.context.devices[0])
+                except:
+                    res = ""
+
+                print("\t"+cl.kernel_work_group_info.to_string(attr), res)
     def _get_overlap_column_loop_all(self, encoding):
         """
         Get overlaps with a single worker per column that loops over each of its synapses

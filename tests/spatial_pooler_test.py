@@ -6,7 +6,7 @@ print(os.environ['PYTHONPATH'].split(os.pathsep))
 from tests.timeit import timeit
 from src.algorithms import SpatialPooler
 
-device = cl.get_platforms()[0].get_devices()[0]
+device = cl.get_platforms()[1].get_devices()[0]
 
 
 @timeit
@@ -40,7 +40,7 @@ def test_numpy_idx(cl_sp, encoder, lim):
     for i in xrange(lim):
         enc = encoder.encode(i)
         print("Active bits:", np.where(enc == 1)[0])
-        print(cl_sp._get_overlap_score_numpy_bitidx(enc))
+        print(cl_sp._get_overlap_score_numpy_bitidx(enc)[:32])
 
 
 @timeit
@@ -63,7 +63,7 @@ def test_input_inverse(cl_sp, encoder, lim):
     for i in xrange(lim):
         enc = encoder.encode(i)
         print("Active bits:", np.where(enc == 1)[0])
-        print(cl_sp._get_overlap_by_input_connections(enc))
+        print(cl_sp._get_overlap_by_input_connections(enc)[:32])
 
 
 def compare_overlap():
@@ -91,6 +91,8 @@ def compare_overlap():
     # print("testing cl bit idx")
     # test_cl_idx(sp_cl, se, lim)
     #
+    # sp_cl.dump_kernel_info()
+
     print("Testing numpy")
     test_numpy_idx(sp_cl, se, lim)
     print("testing inverse")

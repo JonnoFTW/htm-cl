@@ -14,24 +14,38 @@ class Model(object):
         """
         if ctx is None:
             self.ctx = cl.Context([cl.get_platforms()[0].get_devices()[0]])
+        else:
+            import pyopencl.cffi_cl
+            if type(ctx) is not cl.cffi_cl.Context:
+                raise ValueError("ctx must be a valid PyOpenCL Context")
+
         self.queue = cl.CommandQueue(self.ctx)
 
-        self.encoders = {'encoder': getattr(nupic.encoders, field)(**args) for field, args in
-                         params['sensorParams']['encoders'].iteritems()}
+        modelParams = params['modelParams']
+        self.encoders = {
+            field: getattr(nupic.encoders, args['type'])(**dict((arg, val) for arg, val in args.items() if arg not in ['type', 'fieldname']))
+            for field, args in
+            modelParams['sensorParams']['encoders'].items() if args is not None
+         }
+        self.predicted_field = modelParams['predictedField']
         params['spParams']['inputWidth'] = sum(map(lambda x: x.n, self.encoders))
-        self.sp = SpatialPooler(**params['spParams'])
-        self.tm = TemporalMemory(**params['tpParams'])
-        self.classifier = CLAClassifier(**params['claParams'])
-        self.predicted_field = params['predictedField']
+        self.sp = SpatialPooler(**modelParams['spParams'])
+        self.tm = TemporalMemory(**modelParams['tpParams'])
+
+        modelParams['claParams']['numBuckets'] = len(self.encoders[self.predicted_field].getBucketValues())
+        modelParams['claParams']['bits'] = modelParams['tpParams']['columnCount']
+        self.classifier = CLAClassifier(**modelParams['claParams'])
+
         self.recordNum = 0
 
     def encode(self, inputs):
         """
 
         :param inputs: dict of input names to their values
+        inputs
         :return:
         """
-        return np.concatenate((self.encoders[name].encode(val) for name, val in sorted(inputs.iteritems())))
+        return np.concatenate((self.encoders[name].encode(val) for name, val in sorted(inputs.items())))
 
     def run(self, inputs):
         """

@@ -13,7 +13,7 @@ class Model(object):
           'sensorParams':{'encoders':{}
         """
         if ctx is None:
-            self.ctx = cl.Context([cl.get_platforms()[0].get_devices()[0]])
+            self.ctx = cl.create_some_context()
         else:
             import pyopencl.cffi_cl
             if type(ctx) is not cl.cffi_cl.Context:
@@ -22,11 +22,16 @@ class Model(object):
         self.queue = cl.CommandQueue(self.ctx)
 
         modelParams = params['modelParams']
+        for i in ['spParams', 'tpParams', 'claParams']:
+            modelParams[i]['queue'] = self.queue
+
+
         self.encoders = {
             field: getattr(nupic.encoders, args['type'])(**dict((arg, val) for arg, val in args.items() if arg not in ['type', 'fieldname']))
             for field, args in
             modelParams['sensorParams']['encoders'].items() if args is not None
          }
+
         self.predicted_field = modelParams['predictedField']
         params['spParams']['inputWidth'] = sum(map(lambda x: x.n, self.encoders))
         self.sp = SpatialPooler(**modelParams['spParams'])

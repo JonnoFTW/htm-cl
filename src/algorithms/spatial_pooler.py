@@ -9,13 +9,12 @@ except ImportError:
     from ..utils import cltypes
 
 # __package__ = "spatial_pooler"
-
 kernel_src = """
 __kernel void overlap_by_active_input(
     __constant uint* activeBit, // all the active input bit indexes (use np.where() or loop through all bits?
-    __constant synapse_struct* synapses, //all synapses
+    const __global synapse_struct* synapses, //all synapses
     __global overlap_struct* overlaps, // overlap scores
-    __constant float* boostFactors, // boost factors
+    const __global float* boostFactors, // boost factors
     const float synPermConnected, // synapse connection threshold
     const int synapsesPerColumn
 ) {
@@ -52,9 +51,9 @@ __kernel void overlap_by_active_input(
 **/
 __kernel void overlap(
     __constant uchar* encoding, // the encoded input as a binary array
-    __constant synapse_struct* synapses, // all the synapses
+    const __global synapse_struct* synapses, // all the synapses
     __global uint2* overlaps, // columns to store overlap scores
-    __constant float* boostFactors, // boost values for columns
+    const __global float* boostFactors, // boost values for columns
     const float synPermConnected,
     const uint synapsesPerColumn,
     const uint columnCount
@@ -92,14 +91,15 @@ __kernel void overlap(
 }
 __kernel void overlap_column_loop_all(
     __constant uchar* inputBits, // active bits in sorted order
-    __constant synapse_struct* synapses, // all the synapses
+    const __global synapse_struct* synapses, // all the synapses
     __global uint2* overlaps, // columns to store overlap scores
-    __constant float* boostFactors, // boost values for columns
+    const __global float* boostFactors, // boost values for columns
     const float synPermConnected, // if a permenance exceeds this for an active input bit, the synapse is connected
     const int synapsesPerColumn
 ) {
     // for each synapse, check if permanence exceeds threshold and bitIdx in active bits, add to overlaps
     const int columnIdx = get_global_id(0);
+    overlaps[columnIdx] = 0;
     int overlap = 0;
     for(int i =0; i< synapsesPerColumn; i++) {
         const int synapseIdx = columnIdx*synapsesPerColumn +i;
@@ -128,24 +128,44 @@ bool bin_search(__constant uint* a, const int n, const uint key) {
     }
     return 0;  // key not found
 }
+
+__kernel void overlap_by_synapse(
+    __constant uchar* inputPattern, // the input bits
+    const __global synapse_struct* synapses, // all the synapses
+    __global uint2* overlaps, // columns to store overlap scores
+    const __global float* boostFactors, // boost values for columns
+    const float synPermConnected,
+    const int synapsesPerColumn
+) {
+    const uint gid = get_global_id(0); // one thread per column
+    uint overlap = 0;
+    for(int i = 0; i < synapsesPerColumn; i++) {
+        const int synapseIdx = gid * synapsesPerColumn + i;
+        const synapse_struct synapse = synapses[synapseIdx];
+        if(synapse.permanence > synPermConnected && inputPattern[synapse.bitIdx])
+            overlap++;
+    }
+    overlaps[gid].x = overlap;
+    overlaps[gid].y = overlap * boostFactors[gid];
+}
 __kernel void overlap_loop_bin(
     __constant uint* activeBits, // active bits in sorted order
-    __constant synapse_struct* synapses, // all the synapses
+    const __global synapse_struct* synapses, // all the synapses
     __global uint2* overlaps, // columns to store overlap scores
-    __constant float* boostFactors, // boost values for columns
+    const __global float* boostFactors, // boost values for columns
     const float synPermConnected,
     const int synapsesPerColumn,
     const uint numActiveBits
 ) {
     // for each synapse, check if permanence exceeds threshold and bitIdx in active bits, add to overlaps
-    const int columnIdx   = get_global_id(0);
+    const int columnIdx  = get_global_id(0);
     int overlap = 0;
     for(int i =0; i< synapsesPerColumn; i++) {
         const int synapseIdx = columnIdx*synapsesPerColumn +i;
         const synapse_struct synapse = synapses[synapseIdx];
       //  printf("Column %d Synapse %d perm: %.2f bitIdx=%d on=%d\\n", columnIdx, i, synapse.permanence, synapse.bitIdx,synapse.permanence > synPermConnected && bin_search(activeBits, numActiveBits,synapse.bitIdx));
         if (synapse.permanence > synPermConnected && bin_search(activeBits, numActiveBits,synapse.bitIdx)) {
-            overlap += 1;
+            overlap++;
         }
     }
     overlaps[columnIdx].x = overlap;
@@ -154,10 +174,10 @@ __kernel void overlap_loop_bin(
 
 __kernel void overlap_by_input(
     __constant uchar* inputBits,
-    __constant synapse_struct* synapses,
-    __constant int* inputSynapses, // synapse indexes for each input bit
+    const __global float* synapses,
+    const __global int* inputSynapses, // synapse indexes for each input bit
  //   __constant float* boostFactors,
-    volatile __global uint* overlaps,
+    __global uint2* overlaps,
     const float synPermConnected,
     const int synapsesPerColumn,
     const int max_count
@@ -167,24 +187,20 @@ __kernel void overlap_by_input(
     if(inputBits[gid]==1){
         for(int i=0;i<max_count;i++) {
             const int synapseIdx = inputSynapses[gid * max_count + i];
-           // if(gid==1 && synapseIdx != -1) {
-             //   printf("InputBit: 0, synapseIdx: %d col: %d on: %d\\n", synapseIdx, synapseIdx/synapsesPerColumn,
-             //       synapses[synapseIdx].permanence > synPermConnected);
-          //  }
             if(synapseIdx==-1)
                 break;
-            if(synapses[synapseIdx].permanence > synPermConnected) {
-                atomic_inc(&overlaps[synapseIdx / synapsesPerColumn]);
-              //  overlaps[column].y = overlaps[column].x * boostFactors[column];
+            if(synapses[synapseIdx] > synPermConnected) {
+             //   const int out = atomic_inc(overlaps[synapseIdx / synapsesPerColumn].x);
+               // atomic_mul(&overlaps[column].y, overlaps[column].x * boostFactors[column]);
             }
         }
     }
 }
 __kernel void update_synapses(
     __constant uchar* encoding, // encoded input
-    __constant synapse_struct* synapses, //  synapses
-    __constant uint* active_columns, // array of active column indices
-    __constant uint* activeDutyCycles,
+    const __global synapse_struct* synapses, //  synapses
+    const __global uint* active_columns, // array of active column indices
+    const __global uint* activeDutyCycles,
     const char updateRound,
     const int synapsesPerColumn,
     const float synPermInactiveDec,
@@ -224,8 +240,33 @@ __kernel void update_synapses(
          // update min duty cycles
      }
 };
-__kernel void test(__global uint* nums) {
-    nums[get_global_id(0)] = get_global_id(0);
+/**
+ * For each synapse in each active column,
+ * Increment the permanence if synPermThreshold met
+ * Otherwise, decrement
+**/
+__kernel void learnActiveColumns(
+    __global uint* activeColumnIdxs,
+    __global synapse_struct* synapses,
+    const float synPermActiveInc,
+    const float synPermInactiveDec,
+    const float synPermConnected
+) {
+    const uint gid = get_global_id(0);
+    synapse_struct s = synapses[gid];
+
+    if(s.permanence > synPermConnected)
+        s.permanence = max(1.0f, s.permanence + synPermActiveInc);
+    else  {
+        s.permanence = min(0.0f, s.permanence + synPermInactiveDec);
+    }
+}
+__kernel void updateBoostFactors(
+    __global float* boostFactors
+
+) {
+    const uint gid = get_global_id(0);
+    boostFactors[gid] = exp(boostFactors[gid]);
 }
 """
 mf = cl.mem_flags
@@ -290,7 +331,7 @@ class SpatialPooler(object):
                                  dtype=synapse_struct)  # x is permanence value, y is input bit idx
         if spVerbosity >= 1:
             print('------------CL  SpatialPooler Parameters ------------------')
-            print("Synapse Struct", synapse_struct_c_decl)
+            # print("Synapse Struct", synapse_struct_c_decl)
             print("Synapses\t", self.synapses.size)
             print("Columns\t", self.columnCount)
             print("Input Width\t", self.inputWidth)
@@ -303,6 +344,7 @@ class SpatialPooler(object):
         self.synapses['permanence'] = np.clip(
             np.random.normal(synPermConnected, (self.synPermMax_ - self.synPermMin_) / 10,
                              size=self.synapses.shape[0]).astype(np.float32), 0, 1)
+        self.synapses_no_bit = self.synapses['permanence']
         input_synapses = np.arange(0, inputWidth)
         for column in range(self.columnCount):
             idx = column * self.synapsesPerColumn
@@ -311,7 +353,7 @@ class SpatialPooler(object):
         bits, counts = np.unique(self.synapses['bitIdx'], return_counts=True)
         # array mapping each input bit to it's synapses indexes
         max_count = np.max(counts)
-        self.max_input_to_synapse = max_count
+        self.max_input_to_synapse = cltypes.int(max_count)
         self.input_bitIdx = np.full((len(counts) * max_count), -1, dtype=cltypes.int)
 
         for inputBitIdx in xrange(inputWidth):
@@ -319,8 +361,8 @@ class SpatialPooler(object):
             synapseIndexes = np.where(self.synapses['bitIdx'] == inputBitIdx)[0]
             self.input_bitIdx[idx: idx + synapseIndexes.size] = synapseIndexes
 
-        print("Connected synapses: ", np.where(self.synapses['permanence'] > synPermConnected)[0].size / float(
-            self.synapses['permanence'].size))
+        # print("Connected synapses: ", np.where(self.synapses['permanence'] > synPermConnected)[0].size / float(
+        #     self.synapses['permanence'].size))
         # each column connects to exactly columnCount*potentialPct inputs
         src = ''.join([synapse_struct_c_decl, overlap_struct_c_decl, kernel_src])
         self.prog = cl.Program(self._ctx, src).build()
@@ -333,6 +375,18 @@ class SpatialPooler(object):
             # self._show_synapses()
             pass
 
+        # initialise host buffers for commonly used things
+        # we only copy stuff between host and device when we need to
+
+        self.overlap = np.zeros(self.columnCount, dtype=cltypes.uint2)  # array of overlap and boosted overlap scores
+        self.cl_boost_factors = cl.Buffer(self._ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self._boostFactors)
+        self.cl_overlap = cl.Buffer(self._ctx, mf.READ_WRITE, self.overlap.nbytes)
+
+        encoding_temp = np.empty(inputWidth, dtype=cltypes.uchar)  # output is a np.uint8 == cltypes.uchar
+
+        self.cl_encoding = cl.Buffer(self._ctx, mf.READ_ONLY, size=encoding_temp.nbytes)
+        self.cl_synapses = cl.Buffer(self._ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.synapses)
+
     def _show_synapses(self):
         reshaped = self.synapses.reshape((self.columnCount, self.synapsesPerColumn))
         for idx, i in enumerate(reshaped):
@@ -341,13 +395,29 @@ class SpatialPooler(object):
             for sIdx, synapse in enumerate(i):
                 print(" Syn", sIdx, synapse)
 
-    def _test(self, elems=32):
 
-        data = np.empty(elems, dtype=cltypes.uint)
-        cl_data = cl.Buffer(self._ctx, mf.WRITE_ONLY, data.nbytes)
-        self.prog.test(self._queue, (elems,), None, cl_data).wait()
-        cl.enqueue_copy(self._queue, data, cl_data).wait()
-        print(data)
+
+    def _reset_overlap(self):
+        cl.enqueue_fill_buffer(self._queue, self.cl_overlap, np.uint32(0), 0, self.overlap.nbytes).wait()
+
+    def _get_overlap_by_synapse(self, encoding):
+        """
+            __constant uint* inputPattern, // the input bits
+            const __global synapse_struct* synapses, // all the synapses
+            __global uint2* overlaps, // columns to store overlap scores
+            const __global float* boostFactors, // boost values for columns
+            const float synPermConnected,
+            const int synapsesPerColumn
+        """
+        # copy encoding into the buffer
+        ev1 = cl.enqueue_write_buffer(self._queue, self.cl_encoding, encoding)
+        # run the kernel
+        ev2 = self.prog.overlap_by_synapse(self._queue, (self.columnCount,), None,
+                                           self.cl_encoding, self.cl_synapses, self.cl_overlap, self.cl_boost_factors,
+                                           self.synPermConnected, self.synapsesPerColumn,
+                                           wait_for=[ev1])
+        cl.enqueue_copy(self._queue, self.overlap, self.cl_overlap, wait_for=[ev2])
+        return self.overlap
 
     def _get_overlap_by_input_connections(self, encoding):
         """
@@ -362,32 +432,38 @@ class SpatialPooler(object):
         :param encoding:
         :return:
         """
-        cl_encoding = cl.Buffer(self._ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=encoding)
-        overlap = np.zeros(self.columnCount, dtype=cltypes.uint)  # array of overlap and boosted overlap scores
-        cl_overlap = cl.Buffer(self._ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=overlap)
-        cl_input_synapses = cl.Buffer(self._ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=self.input_bitIdx)
-        cl_synapses = self._get_cl_synapses_buffer()
-        cl_boostFactors = self._get_cl_boost_factor_buffer()
+        cl.enqueue_copy(self._queue, self.cl_encoding, encoding).wait()
+        # cl_encoding = cl.Buffer(self._ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=encoding)
 
+        # cl.enqueue_fill_buffer(self._queue, cl_overlap, np.array([0]),0,overlap.nbytes)
+        cl_input_synapses = cl.Buffer(self._ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=self.input_bitIdx)
+        cl_synapses = self._get_cl_synapses_buffer_no_bit_idx()
+        # print("synapse_idx kb :", self.input_bitIdx.nbytes/1024)
+        # print("synapses    kb:", self.synapses_no_bit.nbytes/1024)
+        # print("encoding    kb:", encoding.nbytes/1024)
+        # cl_boostFactors = self._get_cl_boost_factor_buffer()
+        self._reset_overlap()
         self.prog.overlap_by_input(self._queue, (self.inputWidth,), None,
-                                          cl_encoding, cl_synapses, cl_input_synapses,
-                                  # cl_boostFactors,
-                                   cl_overlap,
-                                          self.synPermConnected, self.synapsesPerColumn, cltypes.int(self.max_input_to_synapse)).wait()
-        cl.enqueue_copy(self._queue, overlap, cl_overlap).wait()
-        return overlap
+                                   self.cl_encoding, cl_synapses, cl_input_synapses,
+                                   # cl_boostFactors,
+                                   self.cl_overlap,
+                                   self.synPermConnected, self.synapsesPerColumn, self.max_input_to_synapse).wait()
+        cl.enqueue_copy(self._queue, self.overlap, self.cl_overlap).wait()
+        return self.overlap
 
     def dump_kernel_info(self):
         for knl in self.prog.all_kernels():
             print(knl.function_name)
             print("  Work Group Info")
-            for attr in [getattr(cl.kernel_work_group_info,i) for i in dir(cl.kernel_work_group_info) if not i.startswith('_')]:
+            for attr in [getattr(cl.kernel_work_group_info, i) for i in dir(cl.kernel_work_group_info) if
+                         not i.startswith('_')]:
                 try:
                     res = knl.get_work_group_info(attr, knl.context.devices[0])
                 except:
                     res = ""
 
-                print("\t"+cl.kernel_work_group_info.to_string(attr), res)
+                print("\t" + cl.kernel_work_group_info.to_string(attr), res)
+
     def _get_overlap_column_loop_all(self, encoding):
         """
         Get overlaps with a single worker per column that loops over each of its synapses
@@ -402,7 +478,7 @@ class SpatialPooler(object):
         """
 
         cl_encoding = cl.Buffer(self._ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=encoding)
-        overlap = np.zeros(self.columnCount, dtype=cl.array.vec.uint2)  # array of overlap and boosted overlap scores
+        overlap = np.empty(self.columnCount, dtype=cl.array.vec.uint2)  # array of overlap and boosted overlap scores
         cl_overlap = cl.Buffer(self._ctx, mf.WRITE_ONLY, overlap.nbytes)
         cl_synapses = self._get_cl_synapses_buffer()
         cl_boostFactors = self._get_cl_boost_factor_buffer()
@@ -421,7 +497,7 @@ class SpatialPooler(object):
         cl_synapses = cl.Buffer(self._ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=self.synapses)
         cl_boostFactors = cl.Buffer(self._ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=self._boostFactors)
         cl_encoding = cl.Buffer(self._ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=encoding)
-        overlap = np.zeros(self.columnCount, dtype=cl.array.vec.uint2)  # array of overlap and boosted overlap scores
+        overlap = np.empty(self.columnCount, dtype=cl.array.vec.uint2)  # array of overlap and boosted overlap scores
         cl_overlap = cl.Buffer(self._ctx, mf.WRITE_ONLY, overlap.nbytes)
         max_wg_size = self._ctx.devices[0].get_info(cl.device_info.MAX_WORK_GROUP_SIZE)
         print("Max work group size= {}".format(max_wg_size))
@@ -435,10 +511,13 @@ class SpatialPooler(object):
         return overlap
 
     def _get_cl_synapses_buffer(self):
-        return cl.Buffer(self._ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=self.synapses)
+        return self.cl_synapses
+
+    def _get_cl_synapses_buffer_no_bit_idx(self):
+        return cl.Buffer(self._ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=self.synapses_no_bit)
 
     def _get_cl_boost_factor_buffer(self):
-        return cl.Buffer(self._ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=self._boostFactors)
+        return self.cl_boost_factors
 
     def _get_overlap_score_loop_bin(self, encoding):
         """
@@ -456,7 +535,7 @@ class SpatialPooler(object):
             const uint numActiveBits
         )
         """
-        active_bits = np.where(encoding == 1)[0].astype(cltypes.uint)
+        active_bits = np.where(encoding == 1)[0]
         cl_active_bits = cl.Buffer(self._ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=active_bits)
         cl_synapses = self._get_cl_synapses_buffer()
         cl_boostFactors = self._get_cl_boost_factor_buffer()
@@ -505,13 +584,14 @@ class SpatialPooler(object):
         active_bits = np.where(encoding == 1)[0].astype(np.uint32)
         cl_active_bits = cl.Buffer(self._ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=active_bits)
         overlap = np.zeros(self.columnCount, dtype=self.overlap_struct)  # array of overlap and boosted overlap scores
-        cl_overlap2 = cl.Buffer(self._ctx, mf.READ_WRITE, overlap.nbytes)
+
+        cl_overlap = cl.Buffer(self._ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=overlap)
 
         self.prog.overlap_by_active_input(self._queue,
                                           (self.synapseCount,), None,
-                                          cl_active_bits, cl_synapses, cl_overlap2, cl_boostFactors,
+                                          cl_active_bits, cl_synapses, cl_overlap, cl_boostFactors,
                                           self.synPermConnected, self.synapsesPerColumn).wait()
-        cl.enqueue_copy(self._queue, overlap, cl_overlap2).wait()
+        cl.enqueue_copy(self._queue, overlap, cl_overlap).wait()
         return overlap
 
     def _inhibit_columns(self, overlaps):

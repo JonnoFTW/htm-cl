@@ -1,3 +1,4 @@
 pyopencl
 nupic
 numpy
+future

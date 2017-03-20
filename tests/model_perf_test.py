@@ -62,10 +62,13 @@ times = defaultdict(list)
 for i in params:
     repeats = 1
 
+    print("Running:", i['cols'])
+    # Don't want to take into account model creation time
+    nu_model = NUModel(i['modelParams'])
+    cl_model = CLModel(i['modelParams'])
 
     @timeit_repeat(repeats)
     def run_nupic_model():
-        nu_model = NUModel(i['modelParams'])
         prog_bar = pyprind.ProgBar(row_count)
         for row in hot_gym_data:
             nu_model.run(row)
@@ -74,15 +77,14 @@ for i in params:
 
     @timeit_repeat(repeats)
     def run_htm_cl_model():
-        cl_model = CLModel(i['modelParams'])
         prog_bar = pyprind.ProgBar(row_count)
         for row in hot_gym_data:
             cl_model.run(row)
             prog_bar.update()
 
 
-    # times['nupic'].append({'c': i['cols'], 't': run_nupic_model()})
-    times['htmcl'].append({'c': i['cols'], 't': run_htm_cl_model()})
+    times['nupic'].append({'c': i['cols'], 't': run_nupic_model().microseconds/1000000.})
+    times['htmcl'].append({'c': i['cols'], 't': run_htm_cl_model().microseconds/1000000.})
 
 font = {'size': 30}
 import matplotlib
@@ -91,22 +93,24 @@ from pluck import pluck
 
 matplotlib.rc('font', **font)
 
-nupic_x = pluck(times['nupic']['c'])
-nupic_y = pluck(times['nupic']['t'])
+nupic_x = pluck(times['nupic'], 'c')
+nupic_y = pluck(times['nupic'], 't')
 
-cl_x = pluck(times['htmcl']['c'])
-cl_y = pluck(times['htmcl']['t'])
+cl_x = pluck(times['htmcl'], 'c')
+cl_y = pluck(times['htmcl'], 't')
 
 fig, ax = plt.subplots()
-fig.plot(nupic_x, nupic_y, 'r-', label='Nupic')
-fig.plot(cl_x, cl_y, 'b*', label='Nupic')
+
+plt.plot(nupic_x, nupic_y, 'g^', label='Nupic')
+plt.plot(cl_x, cl_y, 'bs', label='CL')
 plt.legend(prop={'size': 23})
-fig.subplots_adjust(bottom=0.125)
+fig.subplots_adjust(bottom=0.15)
 
 plt.grid()
 plt.grid(b=True, which='major', color='black', linestyle='-')
 plt.grid(b=True, which='minor', color='black', linestyle='dotted')
 plt.title("HTM-CL vs. Nupic for Hot Gym Dataset", y=1.03)
-plt.ylabel("Running Time (s)")
+plt.ylabel("Average Running Time (s)")
 plt.xlabel("Model Size (TM columns)")
 plt.xticks(rotation='vertical')
+plt.show()

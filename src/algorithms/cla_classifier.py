@@ -71,11 +71,11 @@ mf = cl.mem_flags
 
 
 class CLAClassifier(object):
-    def __init__(self, queue, numbuckets, steps=[1], bits=2048, alpha=0.001, actValueAlpha=0.3, verbosity=False):
+    def __init__(self, queue, numBuckets, steps=[1], bits=2048, alpha=0.001, actValueAlpha=0.3, verbosity=False):
         self._prg = cl.Program(queue.context, kernel_src).build()
         self._learn_iteration = 0
         self.bit_activations = np.zeros(bits, dtype=cltypes.uint)
-        self.bucket_activations = np.zeros(numbuckets, dtype=cltypes.uint)
+        self.bucket_activations = np.zeros(numBuckets, dtype=cltypes.uint)
         self.steps = steps
         self.step_count = len(steps)
         self.alpha = cltypes.float(alpha)
@@ -83,7 +83,7 @@ class CLAClassifier(object):
         self.bits = bits  # number of bits in the input
         self._queue = queue  # the opencl queue
         self._ctx = queue.context  # the opencl context
-        self._numBuckets = cltypes.uint(numbuckets)
+        self._numBuckets = cltypes.uint(numBuckets)
         self._verbose = verbosity
 
         self._init_buffers = False

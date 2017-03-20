@@ -54,7 +54,7 @@ class TemporalMemory(object):
         self.inputWidth = inputWidth
 
         self._queue = queue
-        self._ctx = queue.ctx
+        self._ctx = queue.context
 
         np.random.seed(seed)
         self._setup_cl_buffers()

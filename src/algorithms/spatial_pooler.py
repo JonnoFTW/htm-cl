@@ -7,8 +7,6 @@ try:
     from pyopencl import cltypes
 except ImportError:
     from ..utils import cltypes
-
-# __package__ = "spatial_pooler"
 kernel_src = """
 __kernel void overlap_by_active_input(
     __constant uint* activeBit, // all the active input bit indexes (use np.where() or loop through all bits?
@@ -214,8 +212,8 @@ __kernel void overlap_by_input(
             if(synapseIdx==-1)
                 break;
             if(synapses[synapseIdx] > synPermConnected) {
-                const int out = atomic_inc(&overlaps[synapseIdx / synapsesPerColumn].x);
-                atomic_mul(&overlaps[column].y, overlaps[column].x * boostFactors[column]);
+              //  const int out = atomic_inc(&overlaps[synapseIdx / synapsesPerColumn].x);
+               // atomic_mul(&overlaps[column].y, overlaps[column].x * boostFactors[column]);
             }
         }
     } else {
@@ -289,7 +287,7 @@ __kernel void learnActiveColumns(
     const uint gid = get_global_id(0);
     synapse_struct s = synapses[gid];
 
-    if(inputBits[s.bitIdx] && s.permanence > synPermActive)
+    if(inputBits[s.bitIdx] && s.permanence > synPermConnected)
         s.permanence = max(1.0f, s.permanence + synPermActiveInc);
     else  {
         s.permanence = min(0.0f, s.permanence + synPermInactiveDec);
@@ -299,7 +297,7 @@ __kernel void learnActiveColumns(
 /**
  * Update book keeping stuff, after learning
  *
-**/
+*
 
 __kernel void bookKeeping(
 
@@ -321,6 +319,7 @@ __kernel void bookKeeping(
         }
     }
 }
+*/
 """
 mf = cl.mem_flags
 
@@ -666,7 +665,7 @@ class SpatialPooler(object):
                 start += 1
         return winnerIndices[start:][::-1]
 
-    def compute(self, encoding, learn, method=1):
+    def compute(self, encoding, learn=True, method=1):
         """
         Updates the spatial pooler. Returns the the indices of the  on-bits
         :param encoding:

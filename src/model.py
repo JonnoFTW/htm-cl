@@ -1,5 +1,6 @@
 from algorithms import CLAClassifier, SpatialPooler, TemporalMemory
 import numpy as np
+import nupic
 import nupic.encoders
 import pyopencl as cl
 
@@ -22,9 +23,11 @@ class Model(object):
         self.queue = cl.CommandQueue(self.ctx)
 
         modelParams = params['modelParams']
-        for i in ['spParams', 'tpParams', 'claParams']:
+        for i in ['spParams', 'tpParams', 'clParams']:
             modelParams[i]['queue'] = self.queue
 
+        modelParams['spParams']['spatialImp'] = 'cl'
+        modelParams['tpParams']['temporalImp'] = 'cl'
         self.encoders = {
             field: getattr(nupic.encoders, args['type'])(
                 **dict((arg, val) for arg, val in args.items() if arg not in ['type', 'fieldname']))
@@ -33,7 +36,7 @@ class Model(object):
             }
 
         self.predicted_field = modelParams['predictedField']
-        params['spParams']['inputWidth'] = sum(map(lambda x: x.n, self.encoders))
+        modelParams['spParams']['inputWidth'] = sum(map(lambda x: x.getWidth(), self.encoders.values()))
         self.sp = SpatialPooler(**modelParams['spParams'])
         self.tm = TemporalMemory(**modelParams['tpParams'])
 
@@ -50,7 +53,7 @@ class Model(object):
         inputs
         :return:
         """
-        return np.concatenate((self.encoders[name].encode(inputs[name]) for name in self.encoders))
+        return np.concatenate([encoder.encode(inputs[name]) for name, encoder in self.encoders.iteritems()])
 
     def run(self, inputs):
         """

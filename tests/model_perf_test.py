@@ -81,7 +81,7 @@ for i in params:
             prog_bar.update()
 
 
-    times['nupic'].append({'c': i['cols'], 't': run_nupic_model()})
+    # times['nupic'].append({'c': i['cols'], 't': run_nupic_model()})
     times['htmcl'].append({'c': i['cols'], 't': run_htm_cl_model()})
 
 font = {'size': 30}

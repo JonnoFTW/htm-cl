@@ -1,0 +1,1 @@
+from nupic_model import Model as NUModel

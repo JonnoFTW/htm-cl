@@ -7,10 +7,11 @@ def timeit(func):
     @functools.wraps(func)
     def newfunc(*args, **kwargs):
         startTime = datetime.now()
-        func(*args, **kwargs)
+        out = func(*args, **kwargs)
         elapsedTime = datetime.now() - startTime
         print('function [{}] finished in {}\n'.format(
             func.__name__, elapsedTime))
+        return elapsedTime
 
     return newfunc
 
@@ -31,6 +32,7 @@ def timeit_repeat(repeats=100):
             avg = sum(times, timedelta(0)) / len(times)
             print('Function [{}] finished in average of {}\n'.format(
                 func.__name__, avg))
+            return avg
 
         return newfunc
 

@@ -335,7 +335,9 @@ class SpatialPooler(object):
                  boostStrength=0.0,
                  numActiveColumnsPerInhArea=40,
                  potentialPct=.5,
+                 stimulusThreshold=0,
                  seed=1956,
+                 dutyCyclePeriod=1000,
                  spVerbosity=0,
                  spatialImp='cl',
                  synPermActiveInc=0.05,
@@ -351,7 +353,6 @@ class SpatialPooler(object):
         self.boostStrength = boostStrength
         self.numActiveColumnPerInhArea = cltypes.uint(numActiveColumnsPerInhArea)
         self.potentialPct = cltypes.float(potentialPct)
-
         np.random.seed(seed)
         self.verbosity = spVerbosity
         self.synPermActiveInc = cltypes.float(synPermActiveInc)
@@ -360,7 +361,8 @@ class SpatialPooler(object):
         # store the TM as an array of int, either on or off
         self.columns = np.zeros(columnCount, dtype=cltypes.uint)
         self.synapsesPerColumn = cltypes.uint(inputWidth * potentialPct)
-        self._stimulusThreshold = 0
+        self._stimulusThreshold = cltypes.uint(stimulusThreshold)
+        self._dutyCyclePeriod = cltypes.uint(dutyCyclePeriod)
 
         self._activeDutyCycles = np.zeros(self.columnCount, cltypes.uint)
         self._overlapDutyCycles = np.zeros(self.columnCount, cltypes.uint)

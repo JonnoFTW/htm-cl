@@ -25,21 +25,21 @@ class Model(object):
         for i in ['spParams', 'tpParams', 'claParams']:
             modelParams[i]['queue'] = self.queue
 
-
         self.encoders = {
-            field: getattr(nupic.encoders, args['type'])(**dict((arg, val) for arg, val in args.items() if arg not in ['type', 'fieldname']))
+            field: getattr(nupic.encoders, args['type'])(
+                **dict((arg, val) for arg, val in args.items() if arg not in ['type', 'fieldname']))
             for field, args in
             modelParams['sensorParams']['encoders'].items() if args is not None
-         }
+            }
 
         self.predicted_field = modelParams['predictedField']
         params['spParams']['inputWidth'] = sum(map(lambda x: x.n, self.encoders))
         self.sp = SpatialPooler(**modelParams['spParams'])
         self.tm = TemporalMemory(**modelParams['tpParams'])
 
-        modelParams['claParams']['numBuckets'] = len(self.encoders[self.predicted_field].getBucketValues())
-        modelParams['claParams']['bits'] = modelParams['tpParams']['columnCount']
-        self.classifier = CLAClassifier(**modelParams['claParams'])
+        modelParams['clParams']['numBuckets'] = len(self.encoders[self.predicted_field].getBucketValues())
+        modelParams['clParams']['bits'] = modelParams['tpParams']['columnCount']
+        self.classifier = CLAClassifier(**modelParams['clParams'])
 
         self.recordNum = 0
 
@@ -50,7 +50,7 @@ class Model(object):
         inputs
         :return:
         """
-        return np.concatenate((self.encoders[name].encode(val) for name, val in sorted(inputs.items())))
+        return np.concatenate((self.encoders[name].encode(inputs[name]) for name in self.encoders))
 
     def run(self, inputs):
         """

@@ -1,0 +1,1 @@
+from hot_gym_params import MODEL_PARAMS as HOT_GYM_MODEL_PARAMS

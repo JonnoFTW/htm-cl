@@ -16,15 +16,17 @@ def timeit(func):
     return newfunc
 
 
-def timeit_repeat(repeats=100):
+def timeit_repeat(repeats=100, verbose=False):
     def _timeit(func):
         @functools.wraps(func)
         def newfunc(*args, **kwargs):
             times = []
             params = list(args) + map(lambda x: "{}={}".format(x[0], repr(x[1])), kwargs.items())
-            print(
-                "Repeating [{}{}] {} times....".format(func.__name__, '(' + ', '.join(map(str, params)) + ')', repeats))
-            for i in range(repeats):
+            if verbose:
+                print(
+                    "Repeating [{}{}] {} times....".format(func.__name__, '(' + ', '.join(map(str, params)) + ')',
+                                                           repeats))
+            for _ in range(repeats):
                 start_time = datetime.now()
                 func(*args, **kwargs)
                 elapsed_time = datetime.now() - start_time
